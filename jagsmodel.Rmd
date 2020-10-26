@@ -1,0 +1,196 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(rjags)
+library(coda)
+df = read.csv('extendeddata.csv')
+df <- df %>% mutate(ld = 20 * log10(distance), resp = rssi + ld)
+maxfactor = 3
+df <- df[which(df[,'factor']<maxfactor),]
+mindist = 20
+df <- df[which(df[,'distance']>mindist),]
+
+#plot(resp~effcrypto,data=df)
+```
+
+```{r}
+
+#JAGS model:
+model = "model{
+    # Priors
+    beta00 ~ dnorm(0, 1/1000^2);
+    beta01 ~ dnorm(0, 1/1000^2);
+    betaS00 ~ dnorm(0, 1/1000^2);
+    betaS01 ~ dnorm(0, 1/1000^2);
+
+    # Likelihood
+    for(i in 1:N) {
+        mu[i]<- beta00 -X[i,1] - beta01*X[i,2] ;
+        logsigma[i] <- betaS00 + betaS01*X[i,2] ;
+        
+        sigma[i] <- exp(logsigma[i]);
+        
+        Y[i] ~ dnorm(mu[i], 1 / sigma[i]^2);
+    }
+}
+"
+
+fileConn=file("model.temp");
+writeLines(model, fileConn);
+close(fileConn);
+
+field1 = which(df[,'field'] == 1)
+field2 = which(df[,'field'] == 2)
+field3 = which(df[,'field'] == 3)
+field4 = which(df[,'field'] == 4)
+field5 = which(df[,'field'] == 5)
+field6 = which(df[,'field'] == 6)
+fieldcrypt <- df[c(field5,field6),]
+fieldcrypt <- df[field6,]
+
+n = nrow(fieldcrypt)
+X = cbind(rep(1, n),
+    unlist(fieldcrypt[,'ld']),
+    unlist(fieldcrypt[,'effbamboo']))
+Y = unlist(fieldcrypt[,'rssi']) # responses
+
+data = list(Y=Y, X=X, N=n)
+variable_names = c('beta00','beta01')
+burn_in =1000
+thin = 250
+steps = 101000
+
+m = jags.model(file="model.temp", data=data)
+#if(all(is.na(data)))
+#{
+#	m = jags.model(file="model.temp")
+#} else
+#{
+#	m = jags.model(file="model.temp", data=data)
+#}
+update(m, burn_in)
+draw = jags.samples(m, steps, thin=thin, variable.names = variable_names)
+# Convert to a list
+make_list <- function(draw)
+{
+  results = list()
+  for(name in names(draw))
+  {
+    # Extract "chain 1"
+    results[[name]] = as.array(draw[[name]][,,1])
+    
+    # Transpose 2D arrays
+    if(length(dim(results[[name]])) == 2)
+      results[[name]] = t(results[[name]])
+  }
+  return(results)
+}
+results = make_list(draw)
+
+r = sapply(results, function(x)
+  quantile(x, probs = c(0.025, 0.5, 0.975)));
+
+t(r)
+
+coda::effectiveSize(results$beta00)       
+coda::effectiveSize(results$beta01)       
+
+
+```
+
+```{r}
+plot(results$beta00,type='l')
+
+```
+```{r}
+#JAGS model:
+model = "model{
+    # Priors
+    beta00 ~ dnorm(0, 1/1000^2); #Pt
+    beta01 ~ dnorm(0, 1/1000^2); #belt1
+    beta02 ~ dnorm(0, 1/1000^2); #belt1
+    beta03 ~ dnorm(0, 1/1000^2); #belt1    
+    beta04 ~ dnorm(0, 1/1000^2); #belt1
+    betaS00 ~ dnorm(0, 1/1000^2); 
+    betaS01 ~ dnorm(0, 1/1000^2);
+    betaS02 ~ dnorm(0, 1/1000^2);
+    betaS03 ~ dnorm(0, 1/1000^2);
+    betaS04 ~ dnorm(0, 1/1000^2);
+    betaS05 ~ dnorm(0, 1/1000^2)
+
+    # Likelihood
+    for(i in 1:N) {
+        mu[i]<- beta00 - X[i,1] - beta01*X[i,2] - beta02*X[i,3] - beta03*X[i,4] - beta04*X[i,5] ;
+        logsigma[i] <- betaS00 + betaS01*X[i,2] + betaS02*X[i,3] + betaS03*X[i,4] + betaS04*X[i,5] ;
+        
+        sigma[i] <- exp(logsigma[i]);
+        
+        Y[i] ~ dnorm(mu[i], 1 / sigma[i]^2);
+    }
+}
+"
+
+fileConn=file("model.temp");
+writeLines(model, fileConn);
+close(fileConn);
+
+field1 = which(df[,'field'] == 1)
+field2 = which(df[,'field'] == 2)
+field3 = which(df[,'field'] == 3)
+field4 = which(df[,'field'] == 4)
+field5 = which(df[,'field'] == 5)
+field6 = which(df[,'field'] == 6)
+fieldcrypt <- df[c(field1,field2,field3,field4,field6),]
+
+n = nrow(fieldcrypt)
+X = cbind(rep(1, n),
+    unlist(fieldcrypt[,'ld']),
+    unlist(fieldcrypt[,'effcrypt1']),
+    unlist(fieldcrypt[,'effcrypt2']),
+    unlist(fieldcrypt[,'effcrypt3']),
+    unlist(fieldcrypt[,'effcrypt4'])
+    )
+Y = unlist(fieldcrypt[,'rssi']) # responses
+
+data = list(Y=Y, X=X, N=n)
+variable_names = c('beta00','beta01','beta02','beta03','beta04')
+burn_in =2000
+thin = 250
+steps = 101000
+
+m = jags.model(file="model.temp", data=data)
+#if(all(is.na(data)))
+#{
+#	m = jags.model(file="model.temp")
+#} else
+#{
+#	m = jags.model(file="model.temp", data=data)
+#}
+update(m, burn_in)
+draw = jags.samples(m, steps, thin=thin, variable.names = variable_names)
+# Convert to a list
+make_list <- function(draw)
+{
+  results = list()
+  for(name in names(draw))
+  {
+    # Extract "chain 1"
+    results[[name]] = as.array(draw[[name]][,,1])
+    
+    # Transpose 2D arrays
+    if(length(dim(results[[name]])) == 2)
+      results[[name]] = t(results[[name]])
+  }
+  return(results)
+}
+results = make_list(draw)
+
+r = sapply(results, function(x)
+  quantile(x, probs = c(0.025, 0.975)));
+
+t(r)
+```

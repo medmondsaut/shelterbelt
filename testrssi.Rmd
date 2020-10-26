@@ -1,0 +1,40 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+pt <- 14
+actuald <- runif(1000,10,20)
+e <- rnorm(1000,0,2.5)
+reportedd <- actuald + e
+elogs <- 20*log10(actuald) - 20*log10(reportedd)
+quantile(elogs,c(0.025,0.975))
+hist(elogs,)
+
+actuald <- runif(1000,10,200)
+e <- rnorm(1000,0,2.5)
+reportedd <- actuald + e
+elogs <- 20*log10(actuald) - 20*log10(reportedd)
+quantile(elogs,c(0.025,0.975))
+hist(elogs,)
+
+df = read.csv('extendeddata.csv')
+field6 = which(df[,'field'] == 6)
+
+actuald <-unlist(df[field6,'distance'])
+e <- rnorm(length(actuald),0,2.5)
+ss <- unlist(df[field6,'rssi'])
+reportedd <- actuald + e
+elogs <- 20*log10(actuald) - 20*log10(reportedd)
+quantile(elogs,c(0.025,0.975))
+hist(elogs,)
+
+mu = mean(ss + (20*log10(actuald) + 46))
+mu
+elogs <- ss + (20*log10(actuald) + 46 -mu)
+hist(elogs,)
+quantile(elogs,c(0.025,0.975))
+
+
+```

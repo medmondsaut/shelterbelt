@@ -1,0 +1,278 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(imputeTS)
+library(rlang)
+df <- as_tibble(read.csv("log.csv", header=FALSE))
+names(df) = c('id','siv','lat','lng','year','month','day','hour','min','sec')
+
+df1 <- df %>% mutate(newlat =ifelse(lat<(-350000000),lat,NA), newlng = ifelse(lng>1000000000,lng,NA), cycle = as.integer(id/65536))
+u <- t(unique(df1[,"cycle"]))
+
+for (i in u) {
+  print(i)
+  # do latitude
+  x <- which(df1[,"cycle"] == i) 
+  x.ts <- as.ts(df1[x,"newlat"])
+  y <- na_ma(x.ts, weighting = "simple", k=2)
+  z = as.data.frame(y)
+  a<-lapply(z,as.integer)
+  df1[x,"newlat"] = a
+
+    # do longitude
+  x <- which(df1[,"cycle"] == i) 
+  x.ts <- as.ts(df1[x,"newlng"])
+  y <- na_ma(x.ts, weighting = "simple", k=2)
+  z = as.data.frame(y)
+  a<-lapply(z,as.integer)
+  df1[x,"newlng"] = a
+  
+}
+
+df1 <- df1 %>% 
+  mutate(
+    latitude := newlat/10000000, 
+    longitude := newlng/10000000, 
+    field := 0, 
+    gwlatitude := 0, 
+    gwlongitude := 0, 
+    bearing := 0, 
+    distance := 0, 
+    beltcount := 0, 
+    bamboo := 0, 
+    crypt1 := 0, 
+    crypt2 := 0, 
+    crypt3 := 0, 
+    crypt4 := 0, 
+    effcrypt1 := 0, 
+    effcrypt2 := 0, 
+    effcrypt3 := 0, 
+    effcrypt4 := 0, 
+    effcryptomeria := 0,
+    beltbearing = 0, 
+    effbamboo = 0)
+
+```
+
+```{r}
+# which field is each observation in?
+
+field1 = which(df1[,'id']>=1245307 & df1[,'id']<=1245560)
+df1[field1,'field'] = 1
+df1[field1,'beltcount'] = 1
+
+
+field2 = which(df1[,'id']>=1310816 & df1[,'id']<=1310936)
+df1[field2,'field'] = 2
+df1[field2,'beltcount'] = 2
+
+field3 = which(df1[,'id']>=1311052 & df1[,'id']<=1311098)
+df1[field3,'field'] = 3
+df1[field3,'beltcount'] = 3
+
+field4 = which(df1[,'id']>=1311148 & df1[,'id']<=1311195)
+df1[field4,'field'] = 4
+df1[field4,'beltcount'] = 4
+
+df1[c(field1,field2,field3,field4),'crypt1'] = 2.5
+df1[c(field2,field3,field4),'crypt2'] = 2.5
+df1[c(field3,field4),'crypt3'] = 3.2
+df1[field4,'crypt4'] = 3.2
+
+df1[c(field1,field2,field3,field4),'gwlatitude'] = -35.191984
+df1[c(field1,field2,field3,field4),'gwlongitude'] = 173.931082
+
+field5 = which(df1[,'id']>=1376347 & df1[,'id']<=1376392)
+df1[field5,'field'] = 5
+df1[field5,'beltcount'] = 1
+df1[field5,'bamboo'] = 4.6
+
+
+df1[field5,'gwlatitude'] = -35.192693
+df1[field5,'gwlongitude'] = 173.928826
+
+field6 = which(df1[,'id']>=1441864 & df1[,'id']<=1441960)
+df1[field6,'field'] = 6
+
+df1[field6,'gwlatitude'] = -35.415529
+df1[field6,'gwlongitude'] = 173.803267
+
+
+
+```
+
+
+```{r}
+library(geosphere) 
+
+bearing(c(173.928826,-35.192693),c(173.928900,-35.192693), a=6378137)
+ 
+records <- which(df1[,'field']>0)
+for (i in records){
+  node <- unlist(c(df1[i,c('longitude','latitude')]))
+  gw <- unlist(c(df1[i,'gwlongitude'],df1[i,'gwlatitude']))
+  dist <- distHaversine(gw, node, r=6378137)
+  bear <- bearing(gw, node, a=6378137)
+  df1[i,'distance'] = dist
+  df1[i,'bearing'] = bear
+}
+
+shelter1_bearing = bearing(c(173.931184,-35.192200), c(173.931205,-35.190605),a=6378137)
+shelter2_bearing = bearing(c(173.928710,-35.192498), c(173.929361,-35.192503),a=6378137)
+
+df1[c(field1,field2,field3,field4),'beltbearing'] = shelter1_bearing
+df1[field5,'beltbearing'] = shelter2_bearing
+
+df1[c(field1,field2,field3,field4),'effcrypto'] = shelter1_bearing
+df1[field5,'beltbearing'] = shelter2_bearing
+
+df1 <-df1 %>% mutate(incidence := bearing - beltbearing, factor = abs(1/cos(incidence/(2*pi))))
+
+df1[c(field1,field2,field3,field4),'effcrypt1'] = df1[c(field1,field2,field3,field4),'crypt1'] * df1[c(field1,field2,field3,field4),'factor']
+df1[c(field1,field2,field3,field4),'effcrypt2'] = df1[c(field1,field2,field3,field4),'crypt2'] * df1[c(field1,field2,field3,field4),'factor']
+df1[c(field1,field2,field3,field4),'effcrypt3'] = df1[c(field1,field2,field3,field4),'crypt3'] * df1[c(field1,field2,field3,field4),'factor']
+df1[c(field1,field2,field3,field4),'effcrypt4'] = df1[c(field1,field2,field3,field4),'crypt4'] * df1[c(field1,field2,field3,field4),'factor']
+df1 <- df1 %>% mutate(effcryptomeria = effcrypt1 + effcrypt2 + effcrypt3 + effcrypt4)
+df1[field5,'effbamboo'] = df1[field5,'factor'] * df1[field5,'bamboo']
+
+#q = df1[1,'longitude']
+
+
+#distHaversine(c(173.931082,-35.191984),c(173.928826,-35.192693), r=6378137)
+#o
+#df1 %>% mutate(distance := distHaversine(c(longitude,latitude), c(gwlongitude,gwlatitude),r=6378137))
+
+```
+
+```{r}
+hist(unlist(df1[c(field1,field2,field3,field4,field5),'factor']))
+sum(df1[c(field1,field2,field3,field4,field5),'factor']>3)/length(c(field1,field2,field3,field4,field5))
+
+ofinterest = df1[c(field1,field2,field3,field4,field5,field6),]
+
+
+```
+```{r}
+library(RSQLite)
+mydb <- dbConnect(RSQLite::SQLite(), "packets.sqlite")
+dfpackets <- as_tibble(dbGetQuery(mydb, 'SELECT * FROM packets'))
+dbDisconnect(mydb)
+```
+
+
+
+```{r}
+joineddf <- inner_join(ofinterest, dfpackets, by = c('id' = 'seq')) %>% select(c("id","distance","effcrypt1","effcrypt2","effcrypt3","effcrypt4","effcryptomeria", "effbamboo","beltcount","rssi","field","factor")) 
+write.csv(joineddf,'extendeddata.csv')
+```
+
+
+```{r}
+library(rjags)
+# non homogeneous model
+#JAGS model:
+model = "model{
+    # Priors
+    beta01 ~ dnorm(0, 1/1000^2);
+    beta02 ~ dnorm(0, 1/1000^2);
+    beta03 ~ dnorm(0, 1/1000^2);
+    beta04 ~ dnorm(0, 1/1000^2);
+    betaS01 ~ dnorm(0, 1/1000^2);
+    betaS02 ~ dnorm(0, 1/1000^2);
+    betaS03 ~ dnorm(0, 1/1000^2);
+    betaS04 ~ dnorm(0, 1/1000^2);
+
+    # Likelihood
+    for(i in 1:N) {
+        mu[i]<- beta01*X[i,1] + beta02*X[i,2] + beta03*X[i,3] + beta04*X[i,4] ;
+        
+        logsigma[i] <- betaS01*X[i,1] + betaS02*X[i,2] + betaS03*X[i,3] +
+        betaS04*X[i,4] ;
+        
+        sigma[i] <- exp(logsigma[i]);
+        
+        Y[i] ~ dnorm(mu[i], 1 / sigma[i]^2);
+    }
+}
+"
+
+# non homogeneous model
+#JAGS model:
+model = "model{
+    # Priors
+    beta0 ~ dnorm(0, 1/1000^2) ;
+    logsigma0 ~ dunif(-10,10) ;
+    sigma0 <- exp(logsigma0) ;
+    logsigmad ~ dunif(-10,10) ;
+    sigmad <- exp(logsigmad) ;
+
+    # likelihood
+    for(i in 1:N) {
+        
+        d[i] ~ dnorm(X[i,2],1/sigmad^2)
+        mu[i] = beta0 - 20*log(d[i])/log(10)
+        Y[i] ~ dnorm(mu[i], 1/sigma0^2)
+        
+    }
+}
+"
+
+
+fileConn=file("model.temp");
+writeLines(model, fileConn);
+close(fileConn);
+
+field6df <- joineddf[joineddf[,'field'] == 6,]
+write.csv(field6df,'rugby.csv')
+n = nrow(field6df)
+X = cbind(rep(1, n),
+    unlist(field6df[,'distance']))
+Y = unlist(field6df[,'att']) # responses
+
+data = list(Y=Y, X=X, N=n)
+variable_names = c('beta0','sigma0','sigmad')
+burn_in =2000
+thin = 3
+steps = 10000
+
+m = jags.model(file="model.temp", data=data)
+#if(all(is.na(data)))
+#{
+#	m = jags.model(file="model.temp")
+#} else
+#{
+#	m = jags.model(file="model.temp", data=data)
+#}
+update(m, burn_in)
+draw = jags.samples(m, steps, thin=thin, variable.names = variable_names)
+# Convert to a list
+make_list <- function(draw)
+{
+  results = list()
+  for(name in names(draw))
+  {
+    # Extract "chain 1"
+    results[[name]] = as.array(draw[[name]][,,1])
+    
+    # Transpose 2D arrays
+    if(length(dim(results[[name]])) == 2)
+      results[[name]] = t(results[[name]])
+  }
+  return(results)
+}
+results = make_list(draw)
+
+r = sapply(results, function(x)
+  quantile(x, probs = c(0.025, 0.975)));
+
+t(r)
+
+            
+
+
+
+```
